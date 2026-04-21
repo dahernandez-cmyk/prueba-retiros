@@ -2,52 +2,39 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-# Título de la App
-st.set_page_config(page_title="Registro de Retiros", page_icon="📝")
-st.title("Sistema de Normalización de Retiros")
-
 # Conexión
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Formulario
+# --- FORMULARIO ---
 with st.form(key="retiro_form"):
-    st.subheader("Datos del Colaborador")
     nombre = st.text_input("Nombre completo")
-    
-    # NORMALIZACIÓN: Aquí defines las categorías fijas para Power BI
-    motivo = st.selectbox("Motivo del retiro (Categorizado)", [
-        "Renuncia Voluntaria",
-        "Mejor oferta laboral",
-        "Motivos personales",
-        "Terminación de contrato",
-        "Despido con causa",
-        "Jubilación"
-    ])
-    
-    fecha = st.date_input("Fecha efectiva del retiro")
-    comentarios = st.text_area("Detalles adicionales (opcional)")
-    
-    boton_guardar = st.form_submit_button("Registrar Retiro")
+    motivo = st.selectbox("Motivo del retiro", ["Renuncia", "Despido", "Jubilación"])
+    fecha = st.date_input("Fecha")
+    boton_guardar = st.form_submit_button("Registrar")
 
 if boton_guardar:
     if nombre:
-        # 1. Leer datos actuales
-        df_existente = conn.read()
+        # 1. LEER los datos que ya están en el Google Sheet
+        # Esto trae lo que ya han escrito tus compañeras
+        df_actual = conn.read()
         
-        # 2. Crear nueva fila
-        nueva_fila = pd.DataFrame([{
-            "Fecha_Registro": pd.Timestamp.now().strftime("%Y-%m-%d"),
-            "Nombre_Colaborador": nombre,
-            "Motivo_Retiro": motivo,
-            "Fecha_Retiro": str(fecha),
-            "Observaciones": comentarios
+        # Limpiar filas vacías que Google Sheets a veces trae al final
+        df_actual = df_actual.dropna(how="all")
+
+        # 2. CREAR el nuevo registro
+        nuevo_registro = pd.DataFrame([{
+            "Nombre": nombre,
+            "Motivo": motivo,
+            "Fecha": str(fecha)
         }])
+
+        # 3. UNIR los datos viejos con el nuevo (Append)
+        # Esto pone la nueva fila al final de la lista
+        df_actualizado = pd.concat([df_actual, nuevo_registro], ignore_index=True)
+
+        # 4. ACTUALIZAR la hoja con la lista completa revisada
+        conn.update(data=df_actualizado)
         
-        # 3. Concatenar y actualizar
-        df_final = pd.concat([df_existente, nueva_fila], ignore_index=True)
-        conn.update(data=df_final)
-        
-        st.success(f"✅ ¡Registro de {nombre} guardado con éxito!")
-        st.balloons()
+        st.success(f"¡Registro de {nombre} guardado exitosamente!")
     else:
-        st.warning("⚠️ Por favor ingresa el nombre del colaborador.")
+        st.error("El nombre es obligatorio.")
