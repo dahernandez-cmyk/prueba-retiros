@@ -3,68 +3,49 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
 
-# Configuración de la página
-st.set_page_config(page_title="Registro de Retiros", page_icon="👥")
-st.title("Formulario de Normalización de Retiros")
+st.title("Registro de Retiros (Sin sobreescritura)")
 
-# Conexión con Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- FORMULARIO DE ENTRADA ---
 with st.form(key="formulario_retiros"):
-    st.subheader("Ingrese los detalles del retiro")
-    
-    # Nuevo Campo: Fecha de la Novedad (Cuándo ocurrió el retiro)
-    fecha_novedad = st.date_input("Fecha de la Novedad (Día del retiro)")
-    
-    # Campo: Nombre_Colaborador
+    fecha_novedad = st.date_input("Fecha de la Novedad")
     nombre = st.text_input("Nombre del Colaborador")
-    
-    # Campo: Motivo_Retiro
-    motivo = st.selectbox("Motivo del Retiro", [
-        "Renuncia Voluntaria",
-        "Terminación de Contrato",
-        "Mejor Oferta Laboral",
-        "Jubilación",
-        "Despido con Causa",
-        "Motivos Personales"
-    ])
-    
-    # Campo: Observaciones
-    observaciones = st.text_area("Observaciones adicionales")
-    
-    submit_button = st.form_submit_button(label="Guardar Información")
+    motivo = st.selectbox("Motivo", ["Renuncia Voluntaria", "Terminación de Contrato", "Mejor Oferta", "Jubilación", "Despido", "Personal"])
+    observaciones = st.text_area("Observaciones")
+    submit_button = st.form_submit_button(label="Guardar")
 
 if submit_button:
     if nombre:
         try:
-            # 1. LEER datos actuales
-            df_existente = conn.read().dropna(how="all")
+            # --- CAMBIO CLAVE 1: ttl=0 para leer datos reales en tiempo real ---
+            df_existente = conn.read(ttl=0)
+            
+            # --- CAMBIO CLAVE 2: Limpiar filas y columnas totalmente vacías ---
+            if df_existente is not None:
+                df_existente = df_existente.dropna(how="all").reset_index(drop=True)
+            else:
+                df_existente = pd.DataFrame()
 
-            # 2. CREAR el nuevo registro con el campo Fecha_Novedad
+            # Nuevo registro
             nuevo_registro = pd.DataFrame([{
-                "Fecha_Registro": datetime.now().strftime("%Y-%m-%d"), # Automática
-                "Fecha_Novedad": str(fecha_novedad),                 # Elegida por la usuaria
+                "Fecha_Registro": datetime.now().strftime("%Y-%m-%d"),
+                "Fecha_Novedad": str(fecha_novedad),
                 "Nombre_Colaborador": nombre,
                 "Motivo_Retiro": motivo,
                 "Observaciones": observaciones
             }])
 
-            # 3. UNIR datos (Append)
-            df_actualizado = pd.concat([df_existente, nuevo_registro], ignore_index=True)
+            # --- CAMBIO CLAVE 3: Concatenación limpia ---
+            if not df_existente.empty:
+                df_actualizado = pd.concat([df_existente, nuevo_registro], ignore_index=True)
+            else:
+                df_actualizado = nuevo_registro
 
-            # 4. ACTUALIZAR Google Sheets
+            # Subir todo
             conn.update(data=df_actualizado)
-
-            st.success(f"✅ ¡Registro de {nombre} guardado correctamente!")
-            st.balloons()
+            st.success(f"Registrado correctamente en la fila {len(df_actualizado) + 1}")
             
         except Exception as e:
-            st.error(f"Error al guardar: {e}")
+            st.error(f"Error: {e}")
     else:
-        st.warning("⚠️ El nombre es obligatorio.")
-
-# Vista previa para verificar las columnas
-if st.checkbox("Ver base de datos actual"):
-    df_vista = conn.read().dropna(how="all")
-    st.dataframe(df_vista)
+        st.warning("Escribe el nombre.")
